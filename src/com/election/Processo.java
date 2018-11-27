@@ -91,6 +91,14 @@ public class Processo extends Thread {
             return;
         }
 
+        if (m.texto.equals("--leader")){
+            // gambiarra (electionStarter pid da msg carrega o valor do lider novo)
+            if (m.electionStarterPid != this.pidLeader){
+                this.pidLeader = m.electionStarterPid;
+                this.informaLider();
+            }
+        }
+
         if (m.texto.equals("--nak")){
             // se tem um pai, envia nak pro pai
             if (pidPai >= 0)
@@ -137,18 +145,41 @@ public class Processo extends Thread {
             this.bestKnownCapacity = m.bestCapacity;
         }
 
-        // Se todos (menos o pai) responderem ack
-        if (numAcks == this.getNumNos() - 1){
+        int acksEsperados;
+        // Se não tem pai (é fonte)
+        if (this.pidPai < 0)
+            acksEsperados = this.getNumNos();
+        else
+            acksEsperados = this.getNumNos() - 1;
+
+        // Se receber todos os acks que espera
+        if (numAcks == acksEsperados){
             this.respondeEleicao();
             this.endElection();
         }
     }
 
     private void respondeEleicao(){
+        // Se ele for o processo foi quem iniciou a eleição, define e informa o líder
+        if (pidPai < 0){
+            this.pidLeader = bestKnownCapacityPid;
+            this.informaLider();
+            return;
+        }
+
         // envia ack pro pai contendo a melhor capacidade encontrada
         Socket s = getSocket(pidPai);
         Mensagem m = new Mensagem("--ack", this.pid, this.electionStarterPid, this.bestKnownCapacityPid, this.bestKnownCapacity);
         sendMessage(s, m);
+    }
+
+    private void informaLider(){
+        // gambiarra (electionStarter pid da msg carrega o valor do lider novo)
+        Mensagem m = new Mensagem("--leader", this.pid, this.pidLeader);
+
+        // envia eleiçao para todos os vizinhos
+        for (Socket s : listaSockets)
+            sendMessage(s, m);
     }
 
     private void sendAck(int porta){
