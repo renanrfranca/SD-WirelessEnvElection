@@ -63,8 +63,10 @@ public class Processo extends Thread {
         }
 
         if (m.texto.equals("--election")){
-            // Se não já não estabeleceu um pai de uma eleição corrente
+            System.out.println(this.pid + " recebeu solicitacao de [ELEICAO] de <"+m.senderPid+">");
+            // Se já não estabeleceu um pai de uma eleição corrente
             if (electionStarterPid == -1){
+                System.out.println(this.pid + "atribuiu <"+ m.senderPid + "> como PAI");
                 this.handleElection(m);
                 return;
             }
@@ -73,6 +75,8 @@ public class Processo extends Thread {
             if (m.electionStarterPid > this.electionStarterPid){
                 // Cancela eleição atual e lida com a nova
                 // se tem um pai, envia nak pro pai
+                System.out.println("Eleicao antiga cancelada por prioridade. " +
+                        "Recomecando nova eleicao...");
                 sendNak(pidPai);
                 // reinicia variaveis de eleição
                 this.endElection();
@@ -86,6 +90,7 @@ public class Processo extends Thread {
             if (m.electionStarterPid == this.electionStarterPid)
                 sendAck(m.senderPid);
             else
+                System.out.println("Eleicao com prioridade inferior ignorada!");
                 sendNak(m.senderPid);
 
             return;
@@ -93,6 +98,7 @@ public class Processo extends Thread {
 
         if (m.texto.equals("--leader")){
             // gambiarra (electionStarter pid da msg carrega o valor do lider novo)
+            System.out.println(this.pid + " recebeu [LEADER]. Capacidade do Lider: <"+m.senderPid + ">." );
             if (m.electionStarterPid != this.pidLeader){
                 this.pidLeader = m.electionStarterPid;
                 this.informaLider();
@@ -101,6 +107,7 @@ public class Processo extends Thread {
 
         if (m.texto.equals("--nak")){
             // se tem um pai, envia nak pro pai
+            System.out.println(this.pid + "recebeu [NAK] de <"+m.senderPid + ">");
             if (pidPai >= 0)
                 sendNak(pidPai);
             // reinicia variaveis de eleição
@@ -136,7 +143,7 @@ public class Processo extends Thread {
         // se não há eleição corrente, não faz nada
         if (this.electionStarterPid < 0)
             return;
-        
+        System.out.println(this.pid + " recebeu [ACK] de <" + m.senderPid + ">" );
         numAcks++;
 
         // Se msg veio sem info de capacidade, é -1, portanto não entra
@@ -162,6 +169,7 @@ public class Processo extends Thread {
     private void respondeEleicao(){
         // Se ele for o processo foi quem iniciou a eleição, define e informa o líder
         if (pidPai < 0){
+            System.out.println("NOVO LIDER DEFINIDO: <" + bestKnownCapacityPid+">");
             this.pidLeader = bestKnownCapacityPid;
             this.informaLider();
             return;

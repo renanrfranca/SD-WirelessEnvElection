@@ -1,6 +1,8 @@
 package com.election;
 
-public class Mensagem {
+import java.io.Serializable;
+
+public class Mensagem implements Serializable {
     public String texto;
     public int senderPid;
     public int electionStarterPid;
