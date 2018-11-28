@@ -66,7 +66,7 @@ public class Processo extends Thread {
             System.out.println(this.pid + " recebeu solicitacao de [ELEICAO] de <"+m.senderPid+">");
             // Se já não estabeleceu um pai de uma eleição corrente
             if (electionStarterPid == -1){
-                System.out.println(this.pid + "atribuiu <"+ m.senderPid + "> como PAI");
+                System.out.println(this.pid + " atribuiu <"+ m.senderPid + "> como PAI");
                 this.handleElection(m);
                 return;
             }
@@ -98,7 +98,7 @@ public class Processo extends Thread {
 
         if (m.texto.equals("--leader")){
             // gambiarra (electionStarter pid da msg carrega o valor do lider novo)
-            System.out.println(this.pid + " recebeu [LEADER]. Capacidade do Lider: <"+m.senderPid + ">." );
+            System.out.println(this.pid + " recebeu [LEADER]. Lider: <"+m.electionStarterPid + ">." );
             if (m.electionStarterPid != this.pidLeader){
                 this.pidLeader = m.electionStarterPid;
                 this.informaLider();
@@ -121,7 +121,15 @@ public class Processo extends Thread {
         this.pidPai = m.senderPid;
         this.numAcks = 0;
 
+        //Pai é o unico vizinho, termina eleicao
+        if(listaSockets.size() == 1) {
+            this.respondeEleicao();
+            this.endElection();
+            return;
+        }
+
         Mensagem msgSend = new Mensagem("--election", this.pid, this.electionStarterPid);
+
 
         // envia eleiçao para todos os vizinhos tirando o pai
         for (Socket s : listaSockets) {
@@ -141,9 +149,11 @@ public class Processo extends Thread {
 
     private void recebeAck(Mensagem m){
         // se não há eleição corrente, não faz nada
-        if (this.electionStarterPid < 0)
-            return;
         System.out.println(this.pid + " recebeu [ACK] de <" + m.senderPid + ">" );
+
+        if (this.electionStarterPid < 0) {
+            return;
+        }
         numAcks++;
 
         // Se msg veio sem info de capacidade, é -1, portanto não entra
