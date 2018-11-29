@@ -9,7 +9,7 @@ public class Processo extends Thread {
     private int pid;
     private int capacidade;
     private int pidLeader;
-    private ArrayList<Socket> listaSockets;
+    private ArrayList<No> listaNos;
     private Servidor s;
 
     // Variáveis relativas a eleição
@@ -24,7 +24,7 @@ public class Processo extends Thread {
         this.capacidade = capacidade;
         this.pidLeader = -1;
 
-        listaSockets = new ArrayList<>();
+        this.listaNos = new ArrayList<>();
         this.s = new Servidor(porta, this);
 
         this.electionStarterPid = -1;
@@ -38,7 +38,8 @@ public class Processo extends Thread {
         Socket socket;
         try {
             socket = new Socket(ENDERECO, porta);
-            listaSockets.add(socket);
+            No no = new No(socket);
+            listaNos.add(no);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -49,24 +50,28 @@ public class Processo extends Thread {
         this.pidPai = -1;
         this.numAcks = 0;
 
+        System.out.println("iniciando eleição com id " + this.electionStarterPid);
         Mensagem msgSend = new Mensagem("--election", this.pid, this.electionStarterPid);
-
         // envia eleiçao para todos os vizinhos
-        for (Socket s : listaSockets)
-            sendMessage(s, msgSend);
+        for (No no : listaNos)
+            sendMessage(no, msgSend);
     }
 
     public void recebeMensagem(Mensagem m){
+        try {
+            Thread.sleep((pid - 9000) * 250);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         if (m.texto.equals("--ack")){
             this.recebeAck(m);
             return;
         }
 
         if (m.texto.equals("--election")){
-            System.out.println(this.pid + " recebeu solicitacao de [ELEICAO] de <"+m.senderPid+">");
-            // Se já não estabeleceu um pai de uma eleição corrente
+            System.out.println(this.pid + " recebeu solicitacao de [ELEICAO] <" + m.electionStarterPid + "> de <"+m.senderPid+">");
+            // Se não já estabeleceu um pai de uma eleição corrente
             if (electionStarterPid == -1){
-                System.out.println(this.pid + " atribuiu <"+ m.senderPid + "> como PAI");
                 this.handleElection(m);
                 return;
             }
@@ -77,7 +82,7 @@ public class Processo extends Thread {
                 // se tem um pai, envia nak pro pai
                 System.out.println("Eleicao antiga cancelada por prioridade. " +
                         "Recomecando nova eleicao...");
-                sendNak(pidPai);
+                sendNak(pidPai, this.electionStarterPid);
                 // reinicia variaveis de eleição
                 this.endElection();
                 // lida com a nova eleição
@@ -87,42 +92,48 @@ public class Processo extends Thread {
 
             // Se chegou até aqui ou é relativa a mesma eleição (ACK)
             // ou a uma eleição com prioridade inferior (NAK)
-            if (m.electionStarterPid == this.electionStarterPid)
+            if (m.electionStarterPid == this.electionStarterPid){
                 sendAck(m.senderPid);
-            else
+            } else {
                 System.out.println("Eleicao com prioridade inferior ignorada!");
-                sendNak(m.senderPid);
-
+                sendNak(m.senderPid, m.electionStarterPid);
+            }
             return;
         }
 
         if (m.texto.equals("--leader")){
             // gambiarra (electionStarter pid da msg carrega o valor do lider novo)
-            System.out.println(this.pid + " recebeu [LEADER]. Lider: <"+m.electionStarterPid + ">." );
+            System.out.println("recebeu [LEADER] de " + m.senderPid + ". Lider: <"+m.electionStarterPid + ">." );
             if (m.electionStarterPid != this.pidLeader){
                 this.pidLeader = m.electionStarterPid;
                 this.informaLider();
             }
+            return;
         }
 
         if (m.texto.equals("--nak")){
-            // se tem um pai, envia nak pro pai
-            System.out.println(this.pid + "recebeu [NAK] de <"+m.senderPid + ">");
-            if (pidPai >= 0)
-                sendNak(pidPai);
-            // reinicia variaveis de eleição
-            this.endElection();
+            System.out.println(this.pid + "recebeu [NAK] de <"+m.senderPid + "> referente a eleição de <" + m.electionStarterPid + ">");
+            // Se o nak se refere a eleição vigente, a cancela, se não ignora
+            if (m.electionStarterPid == this.electionStarterPid){
+                System.out.println("cancelando eleição " + this.electionStarterPid);
+                // se tem um pai, envia nak pro pai
+                if (pidPai >= 0)
+                    sendNak(pidPai, this.electionStarterPid);
+                // reinicia variaveis de eleição
+                this.endElection();
+            }
             return;
         }
     }
 
     private void handleElection(Mensagem m){
         this.electionStarterPid = m.electionStarterPid;
+        System.out.println(this.pid + " atribuiu <"+ m.senderPid + "> como PAI");
         this.pidPai = m.senderPid;
         this.numAcks = 0;
 
         //Pai é o unico vizinho, termina eleicao
-        if(listaSockets.size() == 1) {
+        if(listaNos.size() == 1) {
             this.respondeEleicao();
             this.endElection();
             return;
@@ -132,9 +143,11 @@ public class Processo extends Thread {
 
 
         // envia eleiçao para todos os vizinhos tirando o pai
-        for (Socket s : listaSockets) {
-            if (s.getPort() != this.pidPai)
-                sendMessage(s, msgSend);
+        for (No no : listaNos) {
+            if (no.getPort() != this.pidPai){
+                System.out.println("Encaminhando eleição para " + no.getPort());
+                sendMessage(no, msgSend);
+            }
         }
     }
     
@@ -149,15 +162,17 @@ public class Processo extends Thread {
 
     private void recebeAck(Mensagem m){
         // se não há eleição corrente, não faz nada
-        System.out.println(this.pid + " recebeu [ACK] de <" + m.senderPid + ">" );
+        System.out.println("recebeu [ACK] de <" + m.senderPid + ">" );
 
         if (this.electionStarterPid < 0) {
+            System.out.println("Ack ignorado por não haver eleição vigente");
             return;
         }
         numAcks++;
 
         // Se msg veio sem info de capacidade, é -1, portanto não entra
         if (this.bestKnownCapacity < m.bestCapacity){
+            System.out.println("Capacidade do ack maior que a conhecida");
             this.bestKnownCapacityPid = m.bestPid;
             this.bestKnownCapacity = m.bestCapacity;
         }
@@ -186,9 +201,11 @@ public class Processo extends Thread {
         }
 
         // envia ack pro pai contendo a melhor capacidade encontrada
-        Socket s = getSocket(pidPai);
+        No no = getNo(pidPai);
+        System.out.println("Retornando para o pai " + pidPai +
+                ":\n BestPID: " + this.bestKnownCapacityPid + "BestCapacity: " + this.bestKnownCapacity);
         Mensagem m = new Mensagem("--ack", this.pid, this.electionStarterPid, this.bestKnownCapacityPid, this.bestKnownCapacity);
-        sendMessage(s, m);
+        sendMessage(no, m);
     }
 
     private void informaLider(){
@@ -196,36 +213,36 @@ public class Processo extends Thread {
         Mensagem m = new Mensagem("--leader", this.pid, this.pidLeader);
 
         // envia eleiçao para todos os vizinhos
-        for (Socket s : listaSockets)
-            sendMessage(s, m);
+        for (No no : listaNos)
+            sendMessage(no, m);
     }
 
     private void sendAck(int porta){
-        Socket s = getSocket(porta);
-        Mensagem m = new Mensagem("--nak", this.pid);
-        sendMessage(s, m);
+        No no = getNo(porta);
+        Mensagem m = new Mensagem("--ack", this.pid);
+        System.out.println("Enviando ack para <" + no.getPort() + "> referente a eleição <" + m.electionStarterPid + ">");
+        sendMessage(no, m);
     }
 
-    private void sendNak(int porta){
-        Socket s = getSocket(porta);
-        Mensagem m = new Mensagem("--nak", this.pid);
-        sendMessage(s, m);
+    private void sendNak(int porta, int electionStarterPid){
+        No no = getNo(porta);
+        Mensagem m = new Mensagem("--nak", this.pid, electionStarterPid);
+        System.out.println("Enviando nak para <" + no.getPort() + "> referente a eleição <" + m.electionStarterPid + ">");
+        sendMessage(no, m);
     }
 
-    private void sendMessage(Socket s, Mensagem m){
-        ObjectOutputStream out;
+    private void sendMessage(No no, Mensagem m){
         try {
-            out = new ObjectOutputStream(s.getOutputStream());
-            out.writeObject(m);
+            no.getOos().writeObject(m);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
     
-    private Socket getSocket(int porta){
-        for (Socket s : listaSockets) {
-            if (porta == s.getPort())
-                return s;
+    private No getNo(int porta){
+        for (No no : listaNos) {
+            if (porta == no.getPort())
+                return no;
         }
         return null;
     }
@@ -235,7 +252,7 @@ public class Processo extends Thread {
     }
 
     public int getNumNos(){
-        return this.listaSockets.size();
+        return this.listaNos.size();
     }
 
     // Método sobrecarregado de Thread,

@@ -18,6 +18,7 @@ public class Main {
         p.start();
 
         // Menu
+        System.out.println("PID: " + porta);
         Scanner scanner = new Scanner(System.in);
         int operacao;
         do {

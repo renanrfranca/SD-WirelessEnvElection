@@ -3,6 +3,7 @@ package com.election;
 import java.io.Serializable;
 
 public class Mensagem implements Serializable {
+    private static final long serialVersionUID = 1684L;
     public String texto;
     public int senderPid;
     public int electionStarterPid;

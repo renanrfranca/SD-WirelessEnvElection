@@ -14,12 +14,16 @@ public class Canal extends Thread {
     }
 
     public void extraiMensagem(){
-        ObjectInputStream entrada;
+        ObjectInputStream entrada = null;
+        try {
+            entrada = new ObjectInputStream(socket.getInputStream());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         //observa continuamente o link entre o servidor e os clientes, com intuito de
         //captar mensagens
         try {
             while (true) {
-                entrada = new ObjectInputStream(socket.getInputStream());
                 Mensagem mensagem = (Mensagem)entrada.readObject();
 
                 processo.recebeMensagem(mensagem);
